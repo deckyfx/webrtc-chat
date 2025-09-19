@@ -5,7 +5,7 @@ import { EnhancedJoinScreen } from './components/EnhancedJoinScreen';
 import { EnhancedConnectionModal } from './components/EnhancedConnectionModal';
 
 const AppContent: React.FC = () => {
-  const { user } = useEnhancedWebRTC();
+  const { user, rooms } = useEnhancedWebRTC();
 
   if (!user) {
     return <EnhancedJoinScreen />;
@@ -19,7 +19,7 @@ const AppContent: React.FC = () => {
   );
 };
 
-const App: React.FC = () => {
+const EnhancedApp: React.FC = () => {
   return (
     <EnhancedWebRTCProvider>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -29,4 +29,4 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
+export default EnhancedApp;

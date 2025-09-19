@@ -68,11 +68,17 @@ export class WebRTCManager {
     connection.getCandidates = () => candidates;
 
     connection.onconnectionstatechange = () => {
+      console.log('Connection state changed to:', connection.connectionState);
       if (connection.connectionState === 'connected') {
-        this.onPeerConnected?.();
+        console.log('Peer connection established successfully');
+        // Don't call onPeerConnected here - wait for data channel to open
       } else if (['disconnected', 'failed', 'closed'].includes(connection.connectionState)) {
         this.disconnect();
       }
+    };
+
+    connection.oniceconnectionstatechange = () => {
+      console.log('ICE connection state:', connection.iceConnectionState);
     };
 
     return peer;
@@ -80,75 +86,47 @@ export class WebRTCManager {
 
   private setupDataChannel(peer: Peer, dataChannel: RTCDataChannel) {
     peer.dataChannel = dataChannel;
+    console.log('Setting up data channel. Peer ID:', peer.id, 'Channel label:', dataChannel.label);
+
+    // Important: Handle data channel opening
+    dataChannel.onopen = () => {
+      console.log('Data channel opened, state:', dataChannel.readyState);
+      console.log('Data channel label:', dataChannel.label);
+      console.log('Current peer after channel open:', this.peer?.id, 'Has datachannel:', !!this.peer?.dataChannel);
+      this.onPeerConnected?.();
+    };
+
+    dataChannel.onclose = () => {
+      console.log('Data channel closed');
+      this.onPeerDisconnected?.();
+    };
+
+    dataChannel.onerror = (error) => {
+      console.error('Data channel error:', error);
+    };
+
+    // Set up message handler
+    console.log('Setting up onmessage handler for data channel');
     dataChannel.onmessage = (event) => {
-      // Handle incoming messages (text or file)
+      // Handle incoming messages - all messages are JSON strings
+      console.log("Received data channel message:", event.data);
       if (typeof event.data === 'string') {
-        // Text message
-        const message = JSON.parse(event.data);
-        this.onMessage?.(message);
-      } else if (event.data instanceof ArrayBuffer) {
-        // File message (assuming single ArrayBuffer for simplicity)
-        const fileData = event.data;
-        // The first message for a file transfer should be metadata
-        // For simplicity, we assume metadata is sent as a string message right before the ArrayBuffer
-        // In a real app, you'd have a more robust protocol (e.g., message type field)
-        // For now, we'll just assume the previous message was metadata.
-        // This is a simplification and might not work perfectly if messages are interleaved.
-        // A better approach would be to send metadata and data in a single structured message.
+        try {
+          const message = JSON.parse(event.data);
+          console.log("Parsed message:", message);
 
-        // For this simple implementation, we'll assume the metadata is part of the ArrayBuffer
-        // or that the message type is explicitly set.
-        // Let's refine this: the message object itself will contain the file data.
+          // If it's a file message with base64 data, convert it
+          if (message.file && message.file.data) {
+            const arrayBuffer = this.base64ToArrayBuffer(message.file.data as any);
+            const blob = new Blob([arrayBuffer], { type: message.file.type });
+            message.file.url = URL.createObjectURL(blob);
+            delete message.file.data; // Remove raw data from message history
+          }
 
-        // Re-reading the WebRTC spec, data channels can send ArrayBuffer directly.
-        // So, the message object should contain the metadata, and the ArrayBuffer is the actual data.
-        // This means the message object itself needs to be sent as a string, and then the ArrayBuffer.
-        // This requires a more complex protocol.
-
-        // Let's simplify: the message object will contain the file metadata, and the file data itself
-        // will be sent as a separate ArrayBuffer. The receiver will need to know which ArrayBuffer
-        // belongs to which metadata message.
-
-        // A common pattern is to send a JSON message with metadata, and then the binary data.
-        // The JSON message would contain a unique ID that the binary data also references.
-
-        // For this simple implementation, let's assume the entire file (metadata + data) is sent as a single JSON string
-        // where the 'data' field of the file is a base64 encoded string of the ArrayBuffer.
-        // This is inefficient for large files but simple to implement.
-
-        // Let's go with the original plan: send metadata as JSON, then ArrayBuffer.
-        // This means the `onmessage` needs to buffer.
-
-        // This is getting too complex for a quick iteration. Let's simplify the protocol.
-        // The `Message` object will contain `file.data` as `ArrayBuffer` when sending.
-        // When receiving, `event.data` will be the `ArrayBuffer`.
-        // The `onmessage` handler will receive the `ArrayBuffer`.
-        // How to associate metadata? The `Message` object itself must be sent as JSON.
-        // If `event.data` is `ArrayBuffer`, it's the file data. How to get metadata?
-
-        // Let's use a simple protocol: all messages are JSON strings.
-        // If it's a file, the JSON string contains metadata and the file data as a base64 string.
-        // This is inefficient but simple.
-
-        // Reverting to the original plan: `Message` interface has `file.data` as `ArrayBuffer`.
-        // The `dataChannel.send` can take `ArrayBuffer` directly.
-        // So, the `onmessage` handler will receive `ArrayBuffer` for files.
-        // How to get metadata? The metadata must be sent *before* the ArrayBuffer.
-        // This requires a stateful receiver.
-
-        // Let's try a different approach: all messages are JSON strings.
-        // If it's a file, the JSON string contains metadata and the file data as a base64 string.
-        // This is the simplest for a quick implementation, despite inefficiency.
-
-        const message: Message = JSON.parse(event.data);
-        if (message.file && message.file.data) {
-          // Received a file message with base64 data
-          const arrayBuffer = this.base64ToArrayBuffer(message.file.data as any);
-          const blob = new Blob([arrayBuffer], { type: message.file.type });
-          message.file.url = URL.createObjectURL(blob);
-          delete message.file.data; // Remove raw data from message history
+          this.onMessage?.(message);
+        } catch (error) {
+          console.error("Error parsing message:", error);
         }
-        this.onMessage?.(message);
       }
     };
   }
@@ -156,6 +134,7 @@ export class WebRTCManager {
   public async createOffer(peerId: string): Promise<string> {
     const peer = await this.createPeerConnection(peerId);
     const dataChannel = peer.connection.createDataChannel("chat");
+    console.log("OFFERER: Created data channel 'chat'");
     this.setupDataChannel(peer, dataChannel);
 
     const offer = await peer.connection.createOffer();
@@ -175,9 +154,10 @@ export class WebRTCManager {
 
   public async handleInvite(inviteCode: string, peerId: string): Promise<string> {
     const invitePayload: SignalingPayload = JSON.parse(atob(inviteCode));
-    
+
     const peer = await this.createPeerConnection(peerId);
     peer.connection.ondatachannel = (event) => {
+        console.log("ANSWERER: Received data channel from remote peer, label:", event.channel.label);
         this.setupDataChannel(peer, event.channel);
     };
 
@@ -212,8 +192,12 @@ export class WebRTCManager {
   }
 
   public async send(messageContent: { text?: string; file?: File }): Promise<Message | null> {
+    console.log("Attempting to send. Peer exists:", !!this.peer,
+                "DataChannel exists:", !!this.peer?.dataChannel,
+                "DataChannel state:", this.peer?.dataChannel?.readyState);
+
     if (!this.peer?.dataChannel || this.peer.dataChannel.readyState !== 'open') {
-      console.error("Data channel not open.");
+      console.error("Data channel not open. State:", this.peer?.dataChannel?.readyState);
       return null;
     }
 
@@ -226,7 +210,16 @@ export class WebRTCManager {
 
     if (messageContent.text) {
       const message: Message = { ...baseMessage, text: messageContent.text };
-      this.peer.dataChannel.send(JSON.stringify(message));
+      const messageStr = JSON.stringify(message);
+      console.log("Sending message:", messageStr);
+      console.log("Sending on channel label:", this.peer.dataChannel.label,
+                  "Channel ID:", this.peer.dataChannel.id);
+      try {
+        this.peer.dataChannel.send(messageStr);
+        console.log("Message sent successfully");
+      } catch (error) {
+        console.error("Error sending message:", error);
+      }
       return message;
     } else if (messageContent.file) {
       const file = messageContent.file;
