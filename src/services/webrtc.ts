@@ -1,7 +1,3 @@
-/**
- * WebRTC Service for managing peer-to-peer connections
- */
-
 import { generateUUID } from "../lib/uuid";
 
 export interface Message {
@@ -12,281 +8,155 @@ export interface Message {
   timestamp: number;
 }
 
-export interface PeerConnection {
-  peerId: string;
-  peerName: string;
+export interface Peer {
+  id: string;
   connection: RTCPeerConnection;
   dataChannel?: RTCDataChannel;
-  messages: Message[];
-  isConnected: boolean;
-  isInitiator: boolean;
+  name?: string;
 }
 
-type ConnectionCallback = (peerId: string, peerName: string) => void;
-type MessageCallback = (peerId: string, message: Message) => void;
-type ConnectionRequestCallback = (peerId: string, peerName: string) => Promise<boolean>;
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
 
-export class WebRTCService {
-  private peerConnections: Map<string, PeerConnection> = new Map();
+interface SignalingPayload {
+  sdp: RTCSessionDescriptionInit;
+  candidates: RTCIceCandidateInit[];
+}
+
+export class WebRTCManager {
+  public peer: Peer | null = null;
   private localUserId: string;
   private localUserName: string;
 
-  // Callbacks
-  private onConnectionStateChange?: ConnectionCallback;
-  private onMessage?: MessageCallback;
-  private onConnectionRequest?: ConnectionRequestCallback;
-
-  // STUN servers for NAT traversal
-  private readonly iceServers: RTCIceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ];
+  public onMessage: ((message: Message) => void) | null = null;
+  public onPeerConnected: (() => void) | null = null;
+  public onPeerDisconnected: (() => void) | null = null;
 
   constructor(userId: string, userName: string) {
     this.localUserId = userId;
     this.localUserName = userName;
   }
 
-  /**
-   * Set callback handlers
-   */
-  public setHandlers(handlers: {
-    onConnectionStateChange?: ConnectionCallback;
-    onMessage?: MessageCallback;
-    onConnectionRequest?: ConnectionRequestCallback;
-  }) {
-    if (handlers.onConnectionStateChange) {
-      this.onConnectionStateChange = handlers.onConnectionStateChange;
-    }
-    if (handlers.onMessage) {
-      this.onMessage = handlers.onMessage;
-    }
-    if (handlers.onConnectionRequest) {
-      this.onConnectionRequest = handlers.onConnectionRequest;
-    }
-  }
+  private async createPeerConnection(peerId: string): Promise<Peer> {
+    const connection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const peer: Peer = { id: peerId, connection };
+    this.peer = peer;
 
-  /**
-   * Create a new peer connection
-   */
-  private async createPeerConnection(peerId: string, peerName: string, isInitiator: boolean): Promise<PeerConnection> {
-    const connection = new RTCPeerConnection({
-      iceServers: this.iceServers,
+    const candidates: RTCIceCandidate[] = [];
+    let candidatePromise = new Promise<void>(resolve => {
+        connection.onicecandidate = (event) => {
+            if (event.candidate) {
+                candidates.push(event.candidate);
+            } else {
+                resolve();
+            }
+        };
     });
 
-    const peer: PeerConnection = {
-      peerId,
-      peerName,
-      connection,
-      messages: [],
-      isConnected: false,
-      isInitiator,
-    };
+    // @ts-ignore
+    connection.gatheredCandidates = candidatePromise;
+    // @ts-ignore
+    connection.getCandidates = () => candidates;
 
-    // Set up data channel
-    if (isInitiator) {
-      const dataChannel = connection.createDataChannel('chat', {
-        ordered: true,
-      });
-      peer.dataChannel = dataChannel;
-      this.setupDataChannel(peer, dataChannel);
-    } else {
-      connection.ondatachannel = (event) => {
-        peer.dataChannel = event.channel;
-        this.setupDataChannel(peer, event.channel);
-      };
-    }
-
-    // Handle connection state changes
     connection.onconnectionstatechange = () => {
-      const state = connection.connectionState;
-      if (state === 'connected') {
-        peer.isConnected = true;
-        this.onConnectionStateChange?.(peerId, peerName);
-      } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-        peer.isConnected = false;
-        this.onConnectionStateChange?.(peerId, peerName);
+      if (connection.connectionState === 'connected') {
+        this.onPeerConnected?.();
+      } else if (['disconnected', 'failed', 'closed'].includes(connection.connectionState)) {
+        this.disconnect();
       }
     };
 
-    this.peerConnections.set(peerId, peer);
     return peer;
   }
 
-  /**
-   * Set up data channel event handlers
-   */
-  private setupDataChannel(peer: PeerConnection, channel: RTCDataChannel) {
-    channel.onopen = () => {
-      console.log(`Data channel opened with ${peer.peerId}`);
-      peer.isConnected = true;
-      this.onConnectionStateChange?.(peer.peerId, peer.peerName);
-    };
-
-    channel.onclose = () => {
-      console.log(`Data channel closed with ${peer.peerId}`);
-      peer.isConnected = false;
-      this.onConnectionStateChange?.(peer.peerId, peer.peerName);
-    };
-
-    channel.onmessage = (event) => {
-      try {
-        const message: Message = JSON.parse(event.data);
-        peer.messages.push(message);
-        this.onMessage?.(peer.peerId, message);
-      } catch (error) {
-        console.error('Failed to parse message:', error);
-      }
-    };
-
-    channel.onerror = (error) => {
-      console.error('Data channel error:', error);
+  private setupDataChannel(peer: Peer, dataChannel: RTCDataChannel) {
+    peer.dataChannel = dataChannel;
+    dataChannel.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      this.onMessage?.(message);
     };
   }
 
-  /**
-   * Initiate a connection with a peer
-   */
-  public async initiateConnection(peerId: string, peerName: string): Promise<RTCSessionDescriptionInit> {
-    const peer = await this.createPeerConnection(peerId, peerName, true);
+  public async createOffer(peerId: string): Promise<string> {
+    const peer = await this.createPeerConnection(peerId);
+    const dataChannel = peer.connection.createDataChannel("chat");
+    this.setupDataChannel(peer, dataChannel);
 
-    // Create offer
     const offer = await peer.connection.createOffer();
     await peer.connection.setLocalDescription(offer);
 
-    // Collect ICE candidates
-    await this.waitForIceCandidates(peer.connection);
+    // @ts-ignore
+    await peer.connection.gatheredCandidates;
 
-    return peer.connection.localDescription!;
+    const payload: SignalingPayload = {
+        sdp: peer.connection.localDescription!,
+        // @ts-ignore
+        candidates: peer.connection.getCandidates().map(c => c.toJSON()),
+    };
+
+    return btoa(JSON.stringify(payload));
   }
 
-  /**
-   * Handle incoming connection request
-   */
-  public async handleConnectionOffer(
-    peerId: string,
-    peerName: string,
-    offer: RTCSessionDescriptionInit
-  ): Promise<RTCSessionDescriptionInit | null> {
-    // Auto-accept all connections since we're using shareable codes
-    const peer = await this.createPeerConnection(peerId, peerName, false);
+  public async handleInvite(inviteCode: string, peerId: string): Promise<string> {
+    const invitePayload: SignalingPayload = JSON.parse(atob(inviteCode));
+    
+    const peer = await this.createPeerConnection(peerId);
+    peer.connection.ondatachannel = (event) => {
+        this.setupDataChannel(peer, event.channel);
+    };
 
-    // Set remote description and create answer
-    await peer.connection.setRemoteDescription(offer);
+    await peer.connection.setRemoteDescription(new RTCSessionDescription(invitePayload.sdp));
+    for (const candidate of invitePayload.candidates) {
+        await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+
     const answer = await peer.connection.createAnswer();
     await peer.connection.setLocalDescription(answer);
 
-    // Collect ICE candidates
-    await this.waitForIceCandidates(peer.connection);
+    // @ts-ignore
+    await peer.connection.gatheredCandidates;
 
-    return peer.connection.localDescription!;
-  }
-
-  /**
-   * Handle connection answer from peer
-   */
-  public async handleConnectionAnswer(peerId: string, answer: RTCSessionDescriptionInit) {
-    const peer = this.peerConnections.get(peerId);
-    if (!peer) {
-      console.error(`No peer connection found for ${peerId}`);
-      return;
-    }
-
-    await peer.connection.setRemoteDescription(answer);
-  }
-
-  /**
-   * Wait for ICE candidates to be gathered
-   */
-  private waitForIceCandidates(connection: RTCPeerConnection): Promise<void> {
-    return new Promise((resolve) => {
-      // Wait for ICE gathering to complete
-      if (connection.iceGatheringState === 'complete') {
-        resolve();
-      } else {
-        const checkState = () => {
-          if (connection.iceGatheringState === 'complete') {
-            connection.removeEventListener('icegatheringstatechange', checkState);
-            resolve();
-          }
-        };
-        connection.addEventListener('icegatheringstatechange', checkState);
-
-        // Timeout after 5 seconds
-        setTimeout(() => {
-          connection.removeEventListener('icegatheringstatechange', checkState);
-          resolve();
-        }, 5000);
-      }
-    });
-  }
-
-  /**
-   * Send a message to a peer
-   */
-  public sendMessage(peerId: string, text: string): boolean {
-    const peer = this.peerConnections.get(peerId);
-    if (!peer || !peer.dataChannel || peer.dataChannel.readyState !== 'open') {
-      console.error(`Cannot send message to ${peerId}: channel not ready`);
-      return false;
-    }
-
-    const message: Message = {
-      id: generateUUID(),
-      text,
-      senderId: this.localUserId,
-      senderName: this.localUserName,
-      timestamp: Date.now(),
+    const answerPayload: SignalingPayload = {
+        sdp: peer.connection.localDescription!,
+        // @ts-ignore
+        candidates: peer.connection.getCandidates().map(c => c.toJSON()),
     };
 
-    try {
-      peer.dataChannel.send(JSON.stringify(message));
-      peer.messages.push(message);
-      return true;
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      return false;
+    return btoa(JSON.stringify(answerPayload));
+  }
+
+  public async handleAnswer(answerCode: string) {
+    const answerPayload: SignalingPayload = JSON.parse(atob(answerCode));
+    if (this.peer) {
+      await this.peer.connection.setRemoteDescription(new RTCSessionDescription(answerPayload.sdp));
+      for (const candidate of answerPayload.candidates) {
+        await this.peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
+      }
     }
   }
 
-  /**
-   * Get messages for a peer
-   */
-  public getMessages(peerId: string): Message[] {
-    return this.peerConnections.get(peerId)?.messages || [];
-  }
-
-  /**
-   * Get all peer connections
-   */
-  public getPeers(): Array<{ peerId: string; peerName: string; isConnected: boolean }> {
-    return Array.from(this.peerConnections.values()).map((peer) => ({
-      peerId: peer.peerId,
-      peerName: peer.peerName,
-      isConnected: peer.isConnected,
-    }));
-  }
-
-  /**
-   * Close a peer connection
-   */
-  public closePeerConnection(peerId: string) {
-    const peer = this.peerConnections.get(peerId);
-    if (peer) {
-      peer.dataChannel?.close();
-      peer.connection.close();
-      this.peerConnections.delete(peerId);
+  public sendMessage(text: string): Message | null {
+    if (this.peer?.dataChannel?.readyState === 'open') {
+      const message: Message = {
+        id: generateUUID(),
+        text,
+        senderId: this.localUserId,
+        senderName: this.localUserName,
+        timestamp: Date.now(),
+      };
+      this.peer.dataChannel.send(JSON.stringify(message));
+      return message;
     }
+    return null;
   }
 
-  /**
-   * Close all connections
-   */
-  public closeAllConnections() {
-    this.peerConnections.forEach((peer) => {
-      peer.dataChannel?.close();
-      peer.connection.close();
-    });
-    this.peerConnections.clear();
+  public disconnect() {
+    if (this.peer) {
+      this.peer.connection.close();
+      this.peer = null;
+      this.onPeerDisconnected?.();
+    }
   }
 }
