@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useWebRTCStore } from '../stores/webrtcStore';
+import { useTrysteroStore } from '../stores/trysteroStore';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
@@ -7,7 +7,7 @@ import { Label } from './ui/label';
 import { MessageSquare, Users, Shield, Zap } from 'lucide-react';
 
 export const EnhancedJoinScreen: React.FC = () => {
-  const setUserName = useWebRTCStore(state => state.setUserName);
+  const setUserName = useTrysteroStore(state => state.setUserName);
   const [name, setName] = useState('');
   const [error, setError] = useState('');
 
@@ -133,6 +133,14 @@ export const EnhancedJoinScreen: React.FC = () => {
                 <span>Chat directly peer-to-peer, no servers!</span>
               </div>
             </div>
+            {typeof window !== 'undefined' && !window.crypto?.subtle && (
+              <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                  ⚠️ <strong>Note:</strong> For security, this app requires HTTPS or localhost.
+                  Please access via https:// or http://localhost
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

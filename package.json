@@ -47,6 +47,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.11",
     "tailwindcss-animate": "^1.0.7",
+    "trystero": "^0.21.8",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
