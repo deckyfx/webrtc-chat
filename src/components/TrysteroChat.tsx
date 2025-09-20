@@ -211,14 +211,19 @@ export const TrysteroChat: React.FC = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowAvatarPicker(true)}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold transition-all hover:ring-2 hover:ring-blue-500 hover:ring-offset-2"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold transition-all hover:ring-2 hover:ring-blue-500 hover:ring-offset-2 overflow-hidden"
               style={{
-                backgroundColor: user?.avatarType === 'color' ? user.avatar : '#3B82F6',
+                backgroundColor: user?.avatarType === 'color' ? user.avatar : user?.avatarType === 'image' ? undefined : '#3B82F6',
                 color: user?.avatarType === 'color' ? 'white' : undefined,
+                backgroundImage: user?.avatarType === 'image' ? `url(${user.avatar})` : undefined,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
               }}
               title="Change avatar"
             >
-              {user?.avatarType === 'emoji' ? user.avatar : user?.name.charAt(0).toUpperCase()}
+              {user?.avatarType === 'emoji' ? user.avatar :
+               user?.avatarType === 'image' ? '' :
+               user?.name.charAt(0).toUpperCase()}
             </button>
             <div className="flex-1">
               <p className="text-sm font-medium text-gray-900 dark:text-white">{user?.name}</p>
@@ -323,13 +328,18 @@ export const TrysteroChat: React.FC = () => {
                     {/* Avatar for other users (left side) */}
                     {!isOwnMessage && !isSystem && (
                       <div
-                        className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-semibold"
+                        className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-semibold overflow-hidden"
                         style={{
-                          backgroundColor: sender?.avatarType === 'color' ? sender.avatar : '#9CA3AF',
+                          backgroundColor: sender?.avatarType === 'color' ? sender.avatar : sender?.avatarType === 'image' ? undefined : '#9CA3AF',
                           color: sender?.avatarType === 'color' ? 'white' : undefined,
+                          backgroundImage: sender?.avatarType === 'image' ? `url(${sender.avatar})` : undefined,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
                         }}
                       >
-                        {sender?.avatarType === 'emoji' ? sender.avatar : sender?.name?.charAt(0).toUpperCase() || '?'}
+                        {sender?.avatarType === 'emoji' ? sender.avatar :
+                         sender?.avatarType === 'image' ? '' :
+                         sender?.name?.charAt(0).toUpperCase() || '?'}
                       </div>
                     )}
 
@@ -382,13 +392,18 @@ export const TrysteroChat: React.FC = () => {
                     {/* Avatar for own messages (right side) */}
                     {isOwnMessage && (
                       <div
-                        className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-semibold"
+                        className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-semibold overflow-hidden"
                         style={{
-                          backgroundColor: user?.avatarType === 'color' ? user.avatar : '#3B82F6',
+                          backgroundColor: user?.avatarType === 'color' ? user.avatar : user?.avatarType === 'image' ? undefined : '#3B82F6',
                           color: user?.avatarType === 'color' ? 'white' : undefined,
+                          backgroundImage: user?.avatarType === 'image' ? `url(${user.avatar})` : undefined,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
                         }}
                       >
-                        {user?.avatarType === 'emoji' ? user.avatar : user?.name.charAt(0).toUpperCase()}
+                        {user?.avatarType === 'emoji' ? user.avatar :
+                         user?.avatarType === 'image' ? '' :
+                         user?.name.charAt(0).toUpperCase()}
                       </div>
                     )}
                   </div>

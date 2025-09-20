@@ -100,13 +100,18 @@ export const EnhancedJoinScreen: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowAvatarPicker(true)}
-                      className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-semibold transition-all hover:ring-2 hover:ring-blue-500 hover:ring-offset-2"
+                      className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-semibold transition-all hover:ring-2 hover:ring-blue-500 hover:ring-offset-2 overflow-hidden"
                       style={{
-                        backgroundColor: avatarType === 'color' ? avatar : '#3B82F6',
+                        backgroundColor: avatarType === 'color' ? avatar : avatarType === 'image' ? undefined : '#3B82F6',
                         color: avatarType === 'color' ? 'white' : undefined,
+                        backgroundImage: avatarType === 'image' ? `url(${avatar})` : undefined,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
                       }}
                     >
-                      {avatarType === 'emoji' ? avatar : name.charAt(0).toUpperCase() || '?'}
+                      {avatarType === 'emoji' ? avatar :
+                       avatarType === 'image' ? '' :
+                       name.charAt(0).toUpperCase() || '?'}
                     </button>
                     <div className="text-sm text-gray-600 dark:text-gray-300">
                       Click to choose an avatar
