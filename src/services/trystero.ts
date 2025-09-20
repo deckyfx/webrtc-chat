@@ -26,12 +26,16 @@ export class TrysteroManager {
   private sendFile: ((data: ArrayBuffer, metadata: any, peerId?: string) => void) | null = null;
   private sendPeerInfo: ((data: any, peerId?: string) => void) | null = null;
   private config: TrysteroConfig;
+  private isReady: boolean = false;
+  private readyCheckInterval: NodeJS.Timeout | null = null;
 
   // Event handlers
-  public onMessage: ((roomId: string, message: Message, peerId: string) => void) | null = null;
-  public onPeerJoin: ((roomId: string, peerId: string, peerData: PeerData) => void) | null = null;
-  public onPeerLeave: ((roomId: string, peerId: string) => void) | null = null;
-  public onRoomJoined: ((roomId: string) => void) | null = null;
+  public onMessage: ((message: Message, peerId: string) => void) | null = null;
+  public onPeerJoin: ((peerId: string, peerData: PeerData) => void) | null = null;
+  public onPeerLeave: ((peerId: string) => void) | null = null;
+  public onRoomJoined: (() => void) | null = null;
+  public onConnectionReady: (() => void) | null = null;
+  public onConnectionFailed: ((error: Error) => void) | null = null;
 
   constructor(config: TrysteroConfig) {
     this.config = config;
@@ -47,7 +51,6 @@ export class TrysteroManager {
       return;
     }
 
-    console.log(`Joining room: ${this.config.roomId}`);
 
     try {
       this.room = joinRoom({ appId: this.config.appId }, this.config.roomId);
@@ -98,7 +101,6 @@ export class TrysteroManager {
     });
 
     receivePeerInfo((peerData: any, peerId: string) => {
-      console.log('Received peer info from', peerId, ':', peerData);
       if (!peerData || typeof peerData !== 'object') return;
 
       // Check if this is a new peer
@@ -107,12 +109,13 @@ export class TrysteroManager {
 
       // If this is a new peer, trigger the join event
       if (isNewPeer) {
-        console.log('New peer detected:', peerId, peerData);
         this.onPeerJoin?.(peerId, peerData);
+
+        // Mark as ready when we get our first peer
+        this.markAsReady();
 
         // Send our info back to the new peer
         const myInfo = { id: this.config.userId, name: this.config.userName };
-        console.log('Sending my info back to new peer:', myInfo);
         this.sendPeerInfo?.(myInfo, peerId);
       }
     });
@@ -120,7 +123,6 @@ export class TrysteroManager {
     this.room.onPeerJoin((peerId: string) => {
       // When we detect a new peer, send our info to them
       const myInfo = { id: this.config.userId, name: this.config.userName };
-      console.log('New peer joined, sending info:', myInfo, 'to', peerId);
 
       // Send info immediately
       if (this.sendPeerInfo) {
@@ -130,7 +132,6 @@ export class TrysteroManager {
       // Also send after a delay to ensure connection is established
       setTimeout(() => {
         if (this.sendPeerInfo) {
-          console.log('Resending info to peer:', peerId);
           this.sendPeerInfo(myInfo, peerId);
         }
       }, 500);
@@ -144,15 +145,15 @@ export class TrysteroManager {
     // Announce ourselves to all existing peers after a short delay
     setTimeout(() => {
       const myInfo = { id: this.config.userId, name: this.config.userName };
-      console.log('Broadcasting my info to all peers:', myInfo);
       if (this.sendPeerInfo) {
         this.sendPeerInfo(myInfo); // Broadcast to all peers
-      } else {
-        console.error('sendPeerInfo not available yet');
       }
     }, 1000); // Increased delay to ensure connection is established
 
     this.onRoomJoined?.();
+
+    // Set up connection ready detection
+    this.setupReadyDetection();
   }
 
   public async send(content: { text?: string; file?: File }): Promise<Message | null> {
@@ -161,7 +162,6 @@ export class TrysteroManager {
       return null;
     }
 
-    console.log('Sending message to', this.peers.size, 'peers');
 
     const baseMessage: Omit<Message, 'text' | 'file'> = {
       id: generateUUID(),
@@ -174,7 +174,6 @@ export class TrysteroManager {
       const message: Message = { ...baseMessage, text: content.text };
 
       // Send to all peers
-      console.log('Sending text message:', message);
       this.sendMessage(message);
 
       return message;
@@ -224,7 +223,62 @@ export class TrysteroManager {
     return this.send(content); // For now, using broadcast
   }
 
+  private setupReadyDetection(): void {
+    // Check readiness every 500ms
+    // We're ready when:
+    // 1. We have the sendMessage function (connection established)
+    // 2. And either we have peers OR we've been waiting for at least 2 seconds (first in room)
+
+    const startTime = Date.now();
+
+    this.readyCheckInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+
+      // Check if we're ready
+      if (!this.isReady && this.sendMessage) {
+        // Ready if we have peers OR if 2 seconds have passed (we're first)
+        if (this.peers.size > 0 || elapsed >= 2000) {
+          this.isReady = true;
+          this.onConnectionReady?.();
+
+          // Clear the interval once ready
+          if (this.readyCheckInterval) {
+            clearInterval(this.readyCheckInterval);
+            this.readyCheckInterval = null;
+          }
+        }
+      }
+
+      // Stop checking after 10 seconds (connection timeout)
+      if (elapsed >= 10000) {
+        if (!this.isReady) {
+          console.error('Connection timeout after 10 seconds');
+          this.onConnectionFailed?.(new Error('Connection timeout'));
+        }
+        if (this.readyCheckInterval) {
+          clearInterval(this.readyCheckInterval);
+          this.readyCheckInterval = null;
+        }
+      }
+    }, 500);
+  }
+
+  private markAsReady(): void {
+    if (!this.isReady) {
+      this.isReady = true;
+      if (this.readyCheckInterval) {
+        clearInterval(this.readyCheckInterval);
+        this.readyCheckInterval = null;
+      }
+      this.onConnectionReady?.();
+    }
+  }
+
   public leaveRoom(): void {
+    if (this.readyCheckInterval) {
+      clearInterval(this.readyCheckInterval);
+      this.readyCheckInterval = null;
+    }
     if (this.room) {
       this.room.leave();
       this.room = null;
@@ -232,6 +286,7 @@ export class TrysteroManager {
       this.sendMessage = null;
       this.sendFile = null;
       this.sendPeerInfo = null;
+      this.isReady = false;
     }
   }
 

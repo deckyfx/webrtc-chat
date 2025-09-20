@@ -22,6 +22,8 @@ export interface Message {
   };
 }
 
+export type ConnectionState = 'connecting' | 'connected' | 'ready' | 'failed';
+
 export interface Room {
   id: string;
   name: string;
@@ -29,6 +31,8 @@ export interface Room {
   peers: PeerData[];
   lastActivity: number;
   unreadCount: number;
+  connectionState: ConnectionState;
+  isReady: boolean; // Can send messages
 }
 
 export interface User {
@@ -64,6 +68,10 @@ interface TrysteroState {
   // Message management
   addMessageToRoom: (roomId: string, message: Message) => void;
   markRoomAsRead: (roomId: string) => void;
+
+  // Connection state management
+  updateRoomConnectionState: (roomId: string, state: ConnectionState) => void;
+  setRoomReady: (roomId: string, isReady: boolean) => void;
 
   // Trystero management
   initializeTrysteroForRoom: (roomId: string) => void;
@@ -107,6 +115,8 @@ export const useTrysteroStore = create<TrysteroState>()(
             peers: [],
             lastActivity: Date.now(),
             unreadCount: 0,
+            connectionState: 'connecting',
+            isReady: false,
           };
 
           set(state => ({
@@ -142,6 +152,8 @@ export const useTrysteroStore = create<TrysteroState>()(
             peers: [],
             lastActivity: Date.now(),
             unreadCount: 0,
+            connectionState: 'connecting',
+            isReady: false,
           };
 
           set(state => ({
@@ -199,7 +211,6 @@ export const useTrysteroStore = create<TrysteroState>()(
         },
 
         sendSystemMessage: (roomId, text) => {
-          console.log('sendSystemMessage called:', { roomId, text });
           const message: Message = {
             id: generateUUID(),
             text,
@@ -212,17 +223,14 @@ export const useTrysteroStore = create<TrysteroState>()(
 
         // Peer management
         addPeer: (roomId, peerId, peerData) => {
-          console.log('addPeer called:', { roomId, peerId, peerData });
           const state = get();
           const room = state.rooms.find(r => r.id === roomId);
 
           if (room) {
             // Check if this peer (by user ID) already exists
             const existingPeer = room.peers.find(p => p.id === peerData.id);
-            console.log('Existing peer check:', existingPeer, 'Current peers:', room.peers);
 
             if (!existingPeer) {
-              console.log('Adding new peer and sending join message');
 
               // Update the peers list
               set(state => ({
@@ -244,7 +252,6 @@ export const useTrysteroStore = create<TrysteroState>()(
         },
 
         removePeer: (roomId, peerId) => {
-          console.log('removePeer called:', { roomId, peerId });
           const state = get();
           const room = state.rooms.find(r => r.id === roomId);
 
@@ -253,7 +260,6 @@ export const useTrysteroStore = create<TrysteroState>()(
             const leavingPeer = room.peers.find(p =>
               (p as any).peerId === peerId || p.id === peerId
             );
-            console.log('Leaving peer:', leavingPeer, 'Current peers:', room.peers);
 
             if (leavingPeer) {
               // Update the peers list
@@ -279,11 +285,9 @@ export const useTrysteroStore = create<TrysteroState>()(
 
         // Message management
         addMessageToRoom: (roomId, message) => {
-          console.log('addMessageToRoom called:', { roomId, message });
           set(state => ({
             rooms: state.rooms.map(room => {
               if (room.id === roomId) {
-                console.log('Adding message to room:', roomId);
                 return {
                   ...room,
                   messages: [...room.messages, message],
@@ -302,6 +306,27 @@ export const useTrysteroStore = create<TrysteroState>()(
               room.id === roomId ? { ...room, unreadCount: 0 } : room
             ),
           }));
+        },
+
+        // Connection state management
+        updateRoomConnectionState: (roomId, connectionState) => {
+          set(state => ({
+            rooms: state.rooms.map(room =>
+              room.id === roomId ? { ...room, connectionState } : room
+            ),
+          }));
+        },
+
+        setRoomReady: (roomId, isReady) => {
+          set(state => ({
+            rooms: state.rooms.map(room =>
+              room.id === roomId ? { ...room, isReady } : room
+            ),
+          }));
+
+          if (isReady) {
+            get().sendSystemMessage(roomId, '✅ *Ready to chat!* You can now send and receive messages.');
+          }
         },
 
         // Trystero initialization
@@ -327,17 +352,27 @@ export const useTrysteroStore = create<TrysteroState>()(
           };
 
           manager.onPeerJoin = (peerId, peerData) => {
-            console.log('Store onPeerJoin handler called:', { roomId, peerId, peerData });
             get().addPeer(roomId, peerId, peerData);
           };
 
           manager.onPeerLeave = (peerId) => {
-            console.log('Store onPeerLeave handler called:', { roomId, peerId });
             get().removePeer(roomId, peerId);
           };
 
           manager.onRoomJoined = () => {
-            get().sendSystemMessage(roomId, '✅ *Connected to room!* Waiting for peers...');
+            get().updateRoomConnectionState(roomId, 'connected');
+            get().sendSystemMessage(roomId, '🔄 *Connecting to room...* Establishing peer connections...');
+          };
+
+          manager.onConnectionReady = () => {
+            get().updateRoomConnectionState(roomId, 'ready');
+            get().setRoomReady(roomId, true);
+          };
+
+          manager.onConnectionFailed = (error) => {
+            console.error('Connection failed:', error);
+            get().updateRoomConnectionState(roomId, 'failed');
+            get().sendSystemMessage(roomId, `❌ *Connection failed!* ${error.message}`);
           };
 
           set(state => ({

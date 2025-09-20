@@ -16,7 +16,10 @@ import {
   Check,
   Hash,
   Image,
-  LogOut
+  LogOut,
+  Loader2,
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Label } from './ui/label';
@@ -162,10 +165,22 @@ export const TrysteroChat: React.FC = () => {
                   <Badge variant="secondary" className="text-xs">
                     {room.id}
                   </Badge>
-                  {room.peers.length > 0 && (
+                  {room.connectionState === 'connecting' && (
+                    <Badge variant="outline" className="text-xs">
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Connecting
+                    </Badge>
+                  )}
+                  {room.connectionState === 'ready' && room.peers.length > 0 && (
                     <Badge variant="outline" className="text-xs">
                       <Users className="h-3 w-3 mr-1" />
                       {room.peers.length}
+                    </Badge>
+                  )}
+                  {room.connectionState === 'failed' && (
+                    <Badge variant="destructive" className="text-xs">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Failed
                     </Badge>
                   )}
                   {room.unreadCount > 0 && (
@@ -207,9 +222,36 @@ export const TrysteroChat: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 px-6 py-4">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  {currentRoom.name}
-                </h1>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    {currentRoom.name}
+                  </h1>
+                  {/* Connection Status Indicator */}
+                  {currentRoom.connectionState === 'connecting' && (
+                    <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Connecting...</span>
+                    </div>
+                  )}
+                  {currentRoom.connectionState === 'connected' && !currentRoom.isReady && (
+                    <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Establishing connection...</span>
+                    </div>
+                  )}
+                  {currentRoom.connectionState === 'ready' && (
+                    <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                      <CheckCircle className="h-4 w-4" />
+                      <span className="text-sm">Ready</span>
+                    </div>
+                  )}
+                  {currentRoom.connectionState === 'failed' && (
+                    <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="text-sm">Connection failed</span>
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-4 mt-1">
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">{currentRoom.id}</Badge>
@@ -335,7 +377,18 @@ export const TrysteroChat: React.FC = () => {
 
           {/* Message Input */}
           <div className="bg-white dark:bg-gray-800 border-t dark:border-gray-700 px-6 py-4">
-            <div className="flex items-center gap-2">
+            {!currentRoom.isReady && (
+              <div className="flex items-center justify-center gap-2 py-2 text-gray-500 dark:text-gray-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">
+                  {currentRoom.connectionState === 'connecting' ? 'Connecting to room...' :
+                   currentRoom.connectionState === 'connected' ? 'Establishing peer connection...' :
+                   currentRoom.connectionState === 'failed' ? 'Connection failed. Please try rejoining.' :
+                   'Preparing chat...'}
+                </span>
+              </div>
+            )}
+            <div className={`flex items-center gap-2 ${!currentRoom.isReady ? 'opacity-50 pointer-events-none' : ''}`}>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -347,7 +400,7 @@ export const TrysteroChat: React.FC = () => {
                 variant="ghost"
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={!!selectedFile}
+                disabled={!!selectedFile || !currentRoom.isReady}
               >
                 {selectedFile ? <Image className="h-4 w-4" /> : <Paperclip className="h-4 w-4" />}
               </Button>
@@ -360,11 +413,11 @@ export const TrysteroChat: React.FC = () => {
                     handleSendMessage();
                   }
                 }}
-                placeholder="Type a message..."
+                placeholder={currentRoom.isReady ? "Type a message..." : "Connecting..."}
                 className="flex-1"
-                disabled={!!selectedFile}
+                disabled={!!selectedFile || !currentRoom.isReady}
               />
-              <Button onClick={handleSendMessage}>
+              <Button onClick={handleSendMessage} disabled={!currentRoom.isReady}>
                 <Send className="h-4 w-4" />
               </Button>
             </div>
