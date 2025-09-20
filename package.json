@@ -28,7 +28,8 @@
     "start": "NODE_ENV=production bun src/index.tsx",
     "build": "bun run build.ts",
     "build:gh-pages": "bun run build.ts --outdir=dist --public-path=/webrtc-chat/",
-    "preview": "bunx serve dist"
+    "preview": "bunx serve dist",
+    "deploy": "bun run build:gh-pages && bunx gh-pages -d dist"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

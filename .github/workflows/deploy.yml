@@ -6,16 +6,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -32,33 +26,39 @@ jobs:
       - name: Build
         run: bun run build:gh-pages
 
-      - name: Prepare deployment
+      - name: Deploy to gh-pages branch
         run: |
-          # Add .nojekyll to prevent Jekyll processing
+          # Configure git
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # Create .nojekyll file
           touch dist/.nojekyll
 
-          # Ensure index.html exists
-          if [ ! -f dist/index.html ]; then
-            echo "Error: dist/index.html not found!"
-            exit 1
+          # Create a temporary directory
+          mkdir gh-pages-deploy
+          cp -r dist/* gh-pages-deploy/
+          cp dist/.nojekyll gh-pages-deploy/
+
+          # Checkout gh-pages branch (create if doesn't exist)
+          git fetch origin
+          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
+            git checkout gh-pages
+            # Clean old files
+            rm -rf *
+          else
+            git checkout --orphan gh-pages
+            # Remove all files from tracking
+            git rm -rf . --cached
+            rm -rf *
           fi
 
-          # List files that will be deployed
-          echo "Files to be deployed:"
-          ls -la dist/
+          # Copy built files
+          cp -r ../gh-pages-deploy/* .
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./dist
+          # Add and commit
+          git add -A
+          git commit -m "Deploy to GitHub Pages - $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          # Push to gh-pages branch
+          git push origin gh-pages --force
