@@ -32,12 +32,8 @@ jobs:
       - name: Build
         run: bun run build:gh-pages
 
-      - name: Copy index.html to root of dist
-        run: |
-          if [ ! -f dist/index.html ]; then
-            echo "Error: dist/index.html not found!"
-            exit 1
-          fi
+      - name: Add .nojekyll file
+        run: touch dist/.nojekyll
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
