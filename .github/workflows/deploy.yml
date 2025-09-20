@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -32,8 +32,20 @@ jobs:
       - name: Build
         run: bun run build:gh-pages
 
-      - name: Add .nojekyll file
-        run: touch dist/.nojekyll
+      - name: Prepare deployment
+        run: |
+          # Add .nojekyll to prevent Jekyll processing
+          touch dist/.nojekyll
+
+          # Ensure index.html exists
+          if [ ! -f dist/index.html ]; then
+            echo "Error: dist/index.html not found!"
+            exit 1
+          fi
+
+          # List files that will be deployed
+          echo "Files to be deployed:"
+          ls -la dist/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
