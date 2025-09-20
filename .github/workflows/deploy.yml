@@ -26,39 +26,13 @@ jobs:
       - name: Build
         run: bun run build:gh-pages
 
-      - name: Deploy to gh-pages branch
-        run: |
-          # Configure git
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+      - name: Create .nojekyll
+        run: touch dist/.nojekyll
 
-          # Create .nojekyll file
-          touch dist/.nojekyll
-
-          # Save the dist directory path
-          DIST_DIR=$(pwd)/dist
-
-          # Checkout gh-pages branch (create if doesn't exist)
-          git fetch origin
-          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
-            git checkout gh-pages
-            # Clean old files
-            git rm -rf . || true
-            rm -rf * || true
-          else
-            git checkout --orphan gh-pages
-            # Remove all files from tracking
-            git rm -rf . --cached || true
-            rm -rf * || true
-          fi
-
-          # Copy built files from the saved path
-          cp -r $DIST_DIR/* .
-          cp $DIST_DIR/.nojekyll .
-
-          # Add and commit
-          git add -A
-          git commit -m "Deploy to GitHub Pages - $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
-
-          # Push to gh-pages branch
-          git push origin gh-pages --force
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          force_orphan: true
