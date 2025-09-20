@@ -5,10 +5,15 @@ import { Input } from './ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Label } from './ui/label';
 import { MessageSquare, Users, Shield, Zap } from 'lucide-react';
+import { AvatarPicker } from './AvatarPicker';
+import { generateUUID } from '../lib/uuid';
 
 export const EnhancedJoinScreen: React.FC = () => {
-  const setUserName = useTrysteroStore(state => state.setUserName);
+  const setUser = useTrysteroStore(state => state.setUser);
   const [name, setName] = useState('');
+  const [avatar, setAvatar] = useState('😊');
+  const [avatarType, setAvatarType] = useState<'emoji' | 'color' | 'image'>('emoji');
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -30,7 +35,12 @@ export const EnhancedJoinScreen: React.FC = () => {
       return;
     }
 
-    setUserName(trimmedName);
+    setUser({
+      id: generateUUID(),
+      name: trimmedName,
+      avatar,
+      avatarType,
+    });
   };
 
   return (
@@ -78,32 +88,54 @@ export const EnhancedJoinScreen: React.FC = () => {
           <CardHeader>
             <CardTitle>Get Started</CardTitle>
             <CardDescription>
-              Enter your name to start chatting peer-to-peer
+              Set up your profile to start chatting peer-to-peer
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Your Name</Label>
-                <Input
-                  id="name"
-                  type="text"
-                  placeholder="Enter your name"
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    setError('');
-                  }}
-                  className={error ? "border-red-500" : ""}
-                  autoFocus
-                  maxLength={30}
-                />
-                {error && (
-                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-                )}
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  This name will be visible to people you chat with
-                </p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Your Avatar</Label>
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowAvatarPicker(true)}
+                      className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-semibold transition-all hover:ring-2 hover:ring-blue-500 hover:ring-offset-2"
+                      style={{
+                        backgroundColor: avatarType === 'color' ? avatar : '#3B82F6',
+                        color: avatarType === 'color' ? 'white' : undefined,
+                      }}
+                    >
+                      {avatarType === 'emoji' ? avatar : name.charAt(0).toUpperCase() || '?'}
+                    </button>
+                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                      Click to choose an avatar
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="name">Your Name</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    placeholder="Enter your name"
+                    value={name}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      setError('');
+                    }}
+                    className={error ? "border-red-500" : ""}
+                    autoFocus
+                    maxLength={30}
+                  />
+                  {error && (
+                    <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    This will be visible to people you chat with
+                  </p>
+                </div>
               </div>
 
               <Button type="submit" className="w-full" size="lg">
@@ -144,6 +176,18 @@ export const EnhancedJoinScreen: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Avatar Picker */}
+      <AvatarPicker
+        open={showAvatarPicker}
+        onOpenChange={setShowAvatarPicker}
+        currentAvatar={avatar}
+        currentAvatarType={avatarType}
+        onAvatarSelect={(newAvatar, type) => {
+          setAvatar(newAvatar);
+          setAvatarType(type);
+        }}
+      />
     </div>
   );
 };

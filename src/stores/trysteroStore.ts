@@ -11,8 +11,8 @@ function generateRoomId(): string {
 export interface Message {
   id: string;
   text?: string;
-  senderId: string;
-  senderName: string;
+  senderId: string; // User ID, not peer ID
+  senderName: string; // Keep for backward compatibility, but we'll look up from peers
   timestamp: number;
   file?: {
     name: string;
@@ -38,6 +38,8 @@ export interface Room {
 export interface User {
   id: string;
   name: string;
+  avatar?: string; // Can be emoji, color, or image URL
+  avatarType?: 'emoji' | 'color' | 'image';
 }
 
 interface TrysteroState {
@@ -50,6 +52,8 @@ interface TrysteroState {
   // Actions
   setUser: (user: User | null) => void;
   setUserName: (name: string) => void;
+  setUserAvatar: (avatar: string, avatarType: 'emoji' | 'color' | 'image') => void;
+  signOut: () => void;
 
   // Room management
   createRoom: () => string;
@@ -92,11 +96,33 @@ export const useTrysteroStore = create<TrysteroState>()(
         setUser: (user) => set({ user }),
 
         setUserName: (name) => {
-          const newUser: User = {
-            id: generateUUID(),
-            name: name.trim(),
-          };
-          set({ user: newUser });
+          const state = get();
+          if (state.user) {
+            // Update existing user
+            set({ user: { ...state.user, name: name.trim() } });
+          } else {
+            // Create new user
+            const newUser: User = {
+              id: generateUUID(),
+              name: name.trim(),
+              avatar: '😊',
+              avatarType: 'emoji',
+            };
+            set({ user: newUser });
+          }
+        },
+
+        setUserAvatar: (avatar, avatarType) => {
+          const state = get();
+          if (state.user) {
+            const updatedUser = { ...state.user, avatar, avatarType };
+            set({ user: updatedUser });
+
+            // Broadcast avatar change to all rooms
+            Object.values(state.trysteroManagers).forEach(manager => {
+              manager.updateUserInfo(updatedUser);
+            });
+          }
         },
 
         // Room management
@@ -345,6 +371,8 @@ export const useTrysteroStore = create<TrysteroState>()(
             roomId: roomId,
             userId: user.id,
             userName: user.name,
+            userAvatar: user.avatar,
+            userAvatarType: user.avatarType,
           });
 
           manager.onMessage = (message, peerId) => {
@@ -386,6 +414,22 @@ export const useTrysteroStore = create<TrysteroState>()(
           const { trysteroManagers } = get();
           Object.values(trysteroManagers).forEach(manager => manager.leaveRoom());
           set({ trysteroManagers: {} });
+        },
+
+        signOut: () => {
+          // Clean up all connections
+          get().cleanupTrystero();
+
+          // Clear all state
+          set({
+            user: null,
+            rooms: [],
+            activeRoomId: null,
+            trysteroManagers: {},
+          });
+
+          // Clear localStorage
+          localStorage.removeItem('trystero-chat-storage');
         },
       }),
       {

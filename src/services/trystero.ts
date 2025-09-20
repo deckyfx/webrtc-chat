@@ -10,6 +10,8 @@ if (typeof window !== 'undefined' && !window.crypto?.subtle) {
 export interface PeerData {
   id: string;
   name: string;
+  avatar?: string;
+  avatarType?: 'emoji' | 'color' | 'image';
 }
 
 export interface TrysteroConfig {
@@ -17,6 +19,8 @@ export interface TrysteroConfig {
   roomId: string;
   userId: string;
   userName: string;
+  userAvatar?: string;
+  userAvatarType?: 'emoji' | 'color' | 'image';
 }
 
 export class TrysteroManager {
@@ -115,14 +119,24 @@ export class TrysteroManager {
         this.markAsReady();
 
         // Send our info back to the new peer
-        const myInfo = { id: this.config.userId, name: this.config.userName };
+        const myInfo: PeerData = {
+          id: this.config.userId,
+          name: this.config.userName,
+          avatar: this.config.userAvatar,
+          avatarType: this.config.userAvatarType,
+        };
         this.sendPeerInfo?.(myInfo, peerId);
       }
     });
 
     this.room.onPeerJoin((peerId: string) => {
       // When we detect a new peer, send our info to them
-      const myInfo = { id: this.config.userId, name: this.config.userName };
+      const myInfo: PeerData = {
+        id: this.config.userId,
+        name: this.config.userName,
+        avatar: this.config.userAvatar,
+        avatarType: this.config.userAvatarType,
+      };
 
       // Send info immediately
       if (this.sendPeerInfo) {
@@ -144,7 +158,12 @@ export class TrysteroManager {
 
     // Announce ourselves to all existing peers after a short delay
     setTimeout(() => {
-      const myInfo = { id: this.config.userId, name: this.config.userName };
+      const myInfo: PeerData = {
+        id: this.config.userId,
+        name: this.config.userName,
+        avatar: this.config.userAvatar,
+        avatarType: this.config.userAvatarType,
+      };
       if (this.sendPeerInfo) {
         this.sendPeerInfo(myInfo); // Broadcast to all peers
       }
@@ -302,4 +321,21 @@ export class TrysteroManager {
     return this.room ? this.config.roomId : null;
   }
 
+  public updateUserInfo(user: { id: string; name: string; avatar?: string; avatarType?: 'emoji' | 'color' | 'image' }): void {
+    // Update config
+    this.config.userName = user.name;
+    this.config.userAvatar = user.avatar;
+    this.config.userAvatarType = user.avatarType;
+
+    // Broadcast updated info to all peers
+    if (this.sendPeerInfo) {
+      const updatedInfo: PeerData = {
+        id: user.id,
+        name: user.name,
+        avatar: user.avatar,
+        avatarType: user.avatarType,
+      };
+      this.sendPeerInfo(updatedInfo); // Broadcast to all
+    }
+  }
 }

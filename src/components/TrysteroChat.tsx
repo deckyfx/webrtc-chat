@@ -19,10 +19,12 @@ import {
   LogOut,
   Loader2,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Power
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Label } from './ui/label';
+import { AvatarPicker } from './AvatarPicker';
 
 export const TrysteroChat: React.FC = () => {
   const user = useTrysteroStore(state => state.user);
@@ -39,6 +41,8 @@ export const TrysteroChat: React.FC = () => {
   const setActiveRoom = useTrysteroStore(state => state.setActiveRoom);
   const sendMessage = useTrysteroStore(state => state.sendMessage);
   const markRoomAsRead = useTrysteroStore(state => state.markRoomAsRead);
+  const setUserAvatar = useTrysteroStore(state => state.setUserAvatar);
+  const signOut = useTrysteroStore(state => state.signOut);
 
   const [messageText, setMessageText] = useState('');
   const [showJoinDialog, setShowJoinDialog] = useState(false);
@@ -46,6 +50,7 @@ export const TrysteroChat: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -204,13 +209,30 @@ export const TrysteroChat: React.FC = () => {
         {/* User Info */}
         <div className="mt-auto p-4 border-t dark:border-gray-700">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-semibold">
-              {user?.name.charAt(0).toUpperCase()}
-            </div>
+            <button
+              onClick={() => setShowAvatarPicker(true)}
+              className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold transition-all hover:ring-2 hover:ring-blue-500 hover:ring-offset-2"
+              style={{
+                backgroundColor: user?.avatarType === 'color' ? user.avatar : '#3B82F6',
+                color: user?.avatarType === 'color' ? 'white' : undefined,
+              }}
+              title="Change avatar"
+            >
+              {user?.avatarType === 'emoji' ? user.avatar : user?.name.charAt(0).toUpperCase()}
+            </button>
             <div className="flex-1">
               <p className="text-sm font-medium text-gray-900 dark:text-white">{user?.name}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Online</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Online • Click avatar to change</p>
             </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={signOut}
+              title="Sign Out"
+              className="text-red-500 hover:text-red-600"
+            >
+              <Power className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>
@@ -284,25 +306,47 @@ export const TrysteroChat: React.FC = () => {
           {/* Messages */}
           <ScrollArea className="flex-1 p-6">
             <div className="space-y-4 max-w-4xl mx-auto">
-              {currentRoom.messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
-                >
+              {currentRoom.messages.map((message) => {
+                // Find sender info from peers or use current user
+                const sender = message.senderId === user?.id
+                  ? user
+                  : currentRoom.peers.find(p => p.id === message.senderId);
+
+                const isOwnMessage = message.senderId === user?.id;
+                const isSystem = message.senderId === 'system';
+
+                return (
                   <div
-                    className={`
-                      max-w-[70%] rounded-lg px-4 py-2
-                      ${message.senderId === 'system'
-                        ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-center w-full max-w-none'
-                        : message.senderId === user?.id
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
-                      }
-                    `}
+                    key={message.id}
+                    className={`flex gap-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
                   >
-                    {message.senderId !== 'system' && message.senderId !== user?.id && (
+                    {/* Avatar for other users (left side) */}
+                    {!isOwnMessage && !isSystem && (
+                      <div
+                        className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-semibold"
+                        style={{
+                          backgroundColor: sender?.avatarType === 'color' ? sender.avatar : '#9CA3AF',
+                          color: sender?.avatarType === 'color' ? 'white' : undefined,
+                        }}
+                      >
+                        {sender?.avatarType === 'emoji' ? sender.avatar : sender?.name?.charAt(0).toUpperCase() || '?'}
+                      </div>
+                    )}
+
+                    <div
+                      className={`
+                        max-w-[70%] rounded-lg px-4 py-2
+                        ${isSystem
+                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-center w-full max-w-none'
+                          : isOwnMessage
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
+                        }
+                      `}
+                    >
+                    {!isSystem && !isOwnMessage && (
                       <p className="text-xs font-semibold mb-1 opacity-75">
-                        {message.senderName}
+                        {sender?.name || message.senderName}
                       </p>
                     )}
 
@@ -333,9 +377,23 @@ export const TrysteroChat: React.FC = () => {
                     <p className="text-xs opacity-50 mt-1">
                       {new Date(message.timestamp).toLocaleTimeString()}
                     </p>
+                    </div>
+
+                    {/* Avatar for own messages (right side) */}
+                    {isOwnMessage && (
+                      <div
+                        className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-semibold"
+                        style={{
+                          backgroundColor: user?.avatarType === 'color' ? user.avatar : '#3B82F6',
+                          color: user?.avatarType === 'color' ? 'white' : undefined,
+                        }}
+                      >
+                        {user?.avatarType === 'emoji' ? user.avatar : user?.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
@@ -446,6 +504,17 @@ export const TrysteroChat: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Avatar Picker */}
+      <AvatarPicker
+        open={showAvatarPicker}
+        onOpenChange={setShowAvatarPicker}
+        currentAvatar={user?.avatar}
+        currentAvatarType={user?.avatarType}
+        onAvatarSelect={(avatar, type) => {
+          setUserAvatar(avatar, type);
+        }}
+      />
 
       {/* Join Room Dialog */}
       <Dialog open={showJoinDialog} onOpenChange={setShowJoinDialog}>
