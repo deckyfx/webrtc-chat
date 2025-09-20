@@ -1,12 +1,34 @@
 {
-  "name": "bun-react-template",
-  "version": "0.1.0",
-  "private": true,
+  "name": "webrtc-chat",
+  "version": "1.0.0",
+  "description": "A peer-to-peer chat application using WebRTC for direct browser-to-browser communication",
+  "private": false,
   "type": "module",
+  "license": "MIT",
+  "author": "deckyfx",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deckyfx/webrtc-chat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/deckyfx/webrtc-chat/issues"
+  },
+  "homepage": "https://deckyfx.github.io/webrtc-chat",
+  "keywords": [
+    "webrtc",
+    "p2p",
+    "chat",
+    "peer-to-peer",
+    "react",
+    "bun",
+    "typescript"
+  ],
   "scripts": {
     "dev": "bun --hot src/index.tsx",
     "start": "NODE_ENV=production bun src/index.tsx",
-    "build": "bun run build.ts"
+    "build": "bun run build.ts",
+    "build:gh-pages": "bun run build.ts --outdir=dist --public-path=/webrtc-chat/",
+    "preview": "bunx serve dist"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
