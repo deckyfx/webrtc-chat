@@ -2,6 +2,8 @@
 
 A peer-to-peer chat application built with React and WebRTC, enabling direct browser-to-browser communication without a central server.
 
+🚀 **[Live Demo](https://deckyfx.github.io/webrtc-chat/)** | 📦 **[GitHub Repository](https://github.com/deckyfx/webrtc-chat)**
+
 ## Features
 
 - 🔒 **Peer-to-Peer**: Direct browser-to-browser communication
@@ -13,7 +15,7 @@ A peer-to-peer chat application built with React and WebRTC, enabling direct bro
 
 ## Live Demo
 
-Once deployed, the app will be available at: `https://deckyfx.github.io/webrtc-chat/`
+🌐 **Visit the app**: [https://deckyfx.github.io/webrtc-chat/](https://deckyfx.github.io/webrtc-chat/)
 
 ## Getting Started
 
@@ -126,4 +128,3 @@ bun run build:gh-pages
 ## License
 
 MIT
-# Trigger GitHub Pages deployment
