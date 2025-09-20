@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useEnhancedWebRTC, ConnectionState } from '../contexts/EnhancedWebRTCProvider';
+import { formatMessageText, getFormattingHelp } from '../lib/textFormatter';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
@@ -16,7 +17,8 @@ import {
   Copy,
   Check,
   Hash,
-  Settings
+  Settings,
+  Image
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Label } from './ui/label';
@@ -46,6 +48,9 @@ export const EnhancedChatInterface: React.FC = () => {
   const [showNewRoomDialog, setShowNewRoomDialog] = useState(false);
   const [newRoomId, setNewRoomId] = useState('');
   const [copied, setCopied] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -104,8 +109,12 @@ export const EnhancedChatInterface: React.FC = () => {
           '/invite - Generate an invitation code<br>' +
           '/join &lt;code&gt; - Join with an invitation code<br>' +
           '/accept &lt;code&gt; - Accept connection with answer code<br>' +
+          '/format - Show text formatting guide<br>' +
           '/help - Show this help message'
         );
+        break;
+      case '/format':
+        await sendSystemMessage(getFormattingHelp());
         break;
       default:
         await sendSystemMessage(`Unknown command: ${cmd}. Type /help for available commands.`);
@@ -152,11 +161,119 @@ export const EnhancedChatInterface: React.FC = () => {
     }
   };
 
+  // Compress image if it's too large
+  const compressImage = async (file: File, maxSizeMB = 1): Promise<File> => {
+    if (!file.type.startsWith('image/')) return file;
+
+    const maxSizeBytes = maxSizeMB * 1024 * 1024;
+    if (file.size <= maxSizeBytes) return file;
+
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d')!;
+
+          // Calculate new dimensions (max 1920px wide/tall)
+          let width = img.width;
+          let height = img.height;
+          const maxDimension = 1920;
+
+          if (width > height && width > maxDimension) {
+            height = (height * maxDimension) / width;
+            width = maxDimension;
+          } else if (height > maxDimension) {
+            width = (width * maxDimension) / height;
+            height = maxDimension;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Convert to blob with compression
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const compressedFile = new File([blob], file.name, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                });
+                resolve(compressedFile);
+              } else {
+                resolve(file);
+              }
+            },
+            'image/jpeg',
+            0.8 // 80% quality
+          );
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processFile = async (file: File) => {
+    // Compress image if needed
+    const processedFile = await compressImage(file);
+    setSelectedFile(processedFile);
+
+    // Generate preview for images
+    if (processedFile.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFilePreview(event.target?.result as string);
+      };
+      reader.readAsDataURL(processedFile);
+    } else {
+      setFilePreview(null);
+    }
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && activeRoomId) {
-      await sendMessage(activeRoomId, { file });
+    if (file) {
+      await processFile(file);
       e.target.value = '';
+    }
+  };
+
+  const handleSendFile = async () => {
+    if (selectedFile && activeRoomId) {
+      await sendMessage(activeRoomId, { file: selectedFile });
+      setSelectedFile(null);
+      setFilePreview(null);
+    }
+  };
+
+  const handleCancelFile = () => {
+    setSelectedFile(null);
+    setFilePreview(null);
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFile = files.find(f => f.type.startsWith('image/'));
+
+    if (imageFile) {
+      await processFile(imageFile);
     }
   };
 
@@ -283,7 +400,22 @@ export const EnhancedChatInterface: React.FC = () => {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div
+        className="flex-1 flex flex-col relative"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Drag and Drop Overlay */}
+        {isDragging && currentRoom && (
+          <div className="absolute inset-0 bg-blue-500/20 dark:bg-blue-400/20 z-50 flex items-center justify-center pointer-events-none">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-8 shadow-2xl">
+              <Image className="h-16 w-16 text-blue-500 dark:text-blue-400 mx-auto mb-4" />
+              <p className="text-lg font-medium text-gray-900 dark:text-white">Drop image here to send</p>
+            </div>
+          </div>
+        )}
+
         {currentRoom ? (
           <>
             {/* Chat Header */}
@@ -339,36 +471,89 @@ export const EnhancedChatInterface: React.FC = () => {
                 {currentRoom.messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex gap-3 ${
-                      message.senderId === user?.id ? 'justify-end' : 'justify-start'
+                    className={`flex ${
+                      message.senderId === user?.id ? 'justify-start pl-3' : 'justify-end pr-3'
                     }`}
                   >
                     <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                      className={`relative max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                         message.senderId === user?.id
-                          ? 'bg-blue-500 text-white'
+                          ? 'bg-green-600 text-white ml-2'
                           : message.senderId === 'system'
                           ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white mr-2'
                       }`}
                     >
+                      {/* Speech bubble tail */}
+                      {message.senderId !== 'system' && (
+                        <>
+                          {/* Tail for user's messages (left side) */}
+                          {message.senderId === user?.id && (
+                            <div
+                              className="absolute top-4"
+                              style={{
+                                left: '-8px',
+                                width: '0',
+                                height: '0',
+                                borderStyle: 'solid',
+                                borderWidth: '8px 10px 8px 0',
+                                borderColor: 'transparent rgb(22 163 74) transparent transparent'
+                              }}
+                            />
+                          )}
+                          {/* Tail for other's messages (right side) */}
+                          {message.senderId !== user?.id && (
+                            <div
+                              className="absolute top-4 dark:hidden"
+                              style={{
+                                right: '-8px',
+                                width: '0',
+                                height: '0',
+                                borderStyle: 'solid',
+                                borderWidth: '8px 0 8px 10px',
+                                borderColor: 'transparent transparent transparent rgb(243 244 246)'
+                              }}
+                            />
+                          )}
+                          {message.senderId !== user?.id && (
+                            <div
+                              className="absolute top-4 hidden dark:block"
+                              style={{
+                                right: '-8px',
+                                width: '0',
+                                height: '0',
+                                borderStyle: 'solid',
+                                borderWidth: '8px 0 8px 10px',
+                                borderColor: 'transparent transparent transparent rgb(55 65 81)'
+                              }}
+                            />
+                          )}
+                        </>
+                      )}
                       {message.senderId !== user?.id && message.senderId !== 'system' && (
                         <p className="text-xs opacity-75 mb-1">{message.senderName}</p>
                       )}
 
                       {message.text && (
-                        <p className="text-sm break-words" dangerouslySetInnerHTML={{ __html: message.text }} />
+                        <p className="text-sm break-words" dangerouslySetInnerHTML={{
+                          __html: message.senderId === 'system' ? message.text : formatMessageText(message.text)
+                        }} />
                       )}
 
                       {message.file && (
                         <div className="mt-2">
                           {message.file.type.startsWith('image/') && message.file.url ? (
-                            <img
-                              src={message.file.url}
-                              alt={message.file.name}
-                              className="max-w-full max-h-64 rounded cursor-pointer"
-                              onClick={() => window.open(message.file?.url, '_blank')}
-                            />
+                            <div className="relative group">
+                              <img
+                                src={message.file.url}
+                                alt={message.file.name}
+                                className="max-w-full max-h-64 rounded cursor-pointer transition-opacity group-hover:opacity-95"
+                                onClick={() => window.open(message.file?.url, '_blank')}
+                              />
+                              <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 rounded-b opacity-0 group-hover:opacity-100 transition-opacity">
+                                <p className="truncate">{message.file.name}</p>
+                              </div>
+                            </div>
                           ) : (
                             <div className="flex items-center gap-2 p-2 bg-white/20 rounded text-xs">
                               <Paperclip className="h-3 w-3" />
@@ -395,6 +580,53 @@ export const EnhancedChatInterface: React.FC = () => {
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
+
+            {/* File Preview */}
+            {selectedFile && (
+              <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-850">
+                <div className="flex items-center gap-3">
+                  {filePreview ? (
+                    <img
+                      src={filePreview}
+                      alt="Preview"
+                      className="h-16 w-16 object-cover rounded"
+                    />
+                  ) : (
+                    <div className="h-16 w-16 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center">
+                      <Paperclip className="h-8 w-8 text-gray-400" />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedFile.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {selectedFile.size > 1024 * 1024
+                        ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB`
+                        : `${(selectedFile.size / 1024).toFixed(1)} KB`}
+                      {selectedFile.type.startsWith('image/') && selectedFile.size > 1024 * 1024 && (
+                        <span className="text-green-600 dark:text-green-400"> (compressed)</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleSendFile}
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <Send className="h-4 w-4 mr-1" />
+                      Send
+                    </Button>
+                    <Button
+                      onClick={handleCancelFile}
+                      variant="outline"
+                      size="sm"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Message Input */}
             <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
@@ -428,6 +660,7 @@ export const EnhancedChatInterface: React.FC = () => {
               <input
                 ref={fileInputRef}
                 type="file"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.rar"
                 onChange={handleFileSelect}
                 className="hidden"
               />

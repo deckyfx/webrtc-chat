@@ -230,7 +230,12 @@ export class WebRTCManager {
           const arrayBuffer = event.target?.result as ArrayBuffer;
           const base64Data = this.arrayBufferToBase64(arrayBuffer);
 
-          const message: Message = {
+          // Create blob URL for sender's display
+          const blob = new Blob([arrayBuffer], { type: file.type });
+          const url = URL.createObjectURL(blob);
+
+          // Message to send (with base64 data for transmission)
+          const messageToSend = {
             ...baseMessage,
             file: {
               name: file.name,
@@ -239,8 +244,20 @@ export class WebRTCManager {
               data: base64Data as any, // Send as base64 string
             },
           };
-          this.peer!.dataChannel!.send(JSON.stringify(message));
-          resolve(message);
+
+          // Message to return (with URL for local display, no data)
+          const messageToReturn: Message = {
+            ...baseMessage,
+            file: {
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              url: url, // URL for displaying locally
+            },
+          };
+
+          this.peer!.dataChannel!.send(JSON.stringify(messageToSend));
+          resolve(messageToReturn);
         };
         reader.onerror = () => {
           console.error("Error reading file.");
@@ -265,7 +282,7 @@ export class WebRTCManager {
     const bytes = new Uint8Array(buffer);
     const len = bytes.byteLength;
     for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
+      binary += String.fromCharCode(bytes[i]!);
     }
     return btoa(binary);
   }
