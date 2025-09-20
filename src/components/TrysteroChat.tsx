@@ -357,14 +357,14 @@ export const TrysteroChat: React.FC = () => {
                       {/* Speech bubble tail for other users (points left) */}
                       {!isOwnMessage && !isSystem && (
                         <div
-                          className="absolute top-3 -left-[6px] w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-r-[6px] border-r-gray-200 dark:border-r-gray-700"
+                          className="absolute top-3 -left-[12px] w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-r-[12px] border-r-gray-200 dark:border-r-gray-700"
                         />
                       )}
 
                       {/* Speech bubble tail for own messages (points right) */}
                       {isOwnMessage && (
                         <div
-                          className="absolute top-3 -right-[6px] w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-l-[6px] border-l-blue-500"
+                          className="absolute top-3 -right-[12px] w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-l-[12px] border-l-blue-500"
                         />
                       )}
                     {!isSystem && !isOwnMessage && (
