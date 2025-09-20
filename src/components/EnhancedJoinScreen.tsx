@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useEnhancedWebRTC } from '../contexts/EnhancedWebRTCProvider';
+import { useWebRTCStore } from '../stores/webrtcStore';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
@@ -7,7 +7,7 @@ import { Label } from './ui/label';
 import { MessageSquare, Users, Shield, Zap } from 'lucide-react';
 
 export const EnhancedJoinScreen: React.FC = () => {
-  const { setUserName } = useEnhancedWebRTC();
+  const setUserName = useWebRTCStore(state => state.setUserName);
   const [name, setName] = useState('');
   const [error, setError] = useState('');
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useEnhancedWebRTC, ConnectionState } from '../contexts/EnhancedWebRTCProvider';
+import { useWebRTCStore, ConnectionState } from '../stores/webrtcStore';
 import { formatMessageText, getFormattingHelp } from '../lib/textFormatter';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -23,24 +23,31 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Label } from './ui/label';
 
 export const EnhancedChatInterface: React.FC = () => {
-  const {
-    user,
-    rooms,
-    activeRoomId,
-    currentRoom,
-    connectionState,
-    createRoom,
-    joinRoom,
-    leaveRoom,
-    setActiveRoom,
-    sendMessage,
-    isConnected,
-    markRoomAsRead,
-    generateInviteCode,
-    joinWithInviteCode,
-    completeConnection,
-    sendSystemMessage: sendSystemMsg
-  } = useEnhancedWebRTC();
+  // Using Zustand selectors for optimal performance - only re-render when needed
+  const user = useWebRTCStore(state => state.user);
+  const rooms = useWebRTCStore(state => state.rooms);
+  const activeRoomId = useWebRTCStore(state => state.activeRoomId);
+  const connectionState = useWebRTCStore(state => state.connectionState);
+
+  // Computed values as proper selectors
+  const currentRoom = useWebRTCStore(state =>
+    state.rooms.find(room => room.id === state.activeRoomId) || null
+  );
+  const isConnected = useWebRTCStore(state =>
+    state.connectionState === ConnectionState.CONNECTED
+  );
+
+  // Actions don't need individual selectors - they're stable references
+  const createRoom = useWebRTCStore(state => state.createRoom);
+  const joinRoom = useWebRTCStore(state => state.joinRoom);
+  const leaveRoom = useWebRTCStore(state => state.leaveRoom);
+  const setActiveRoom = useWebRTCStore(state => state.setActiveRoom);
+  const sendMessage = useWebRTCStore(state => state.sendMessage);
+  const markRoomAsRead = useWebRTCStore(state => state.markRoomAsRead);
+  const generateInviteCode = useWebRTCStore(state => state.generateInviteCode);
+  const joinWithInviteCode = useWebRTCStore(state => state.joinWithInviteCode);
+  const completeConnection = useWebRTCStore(state => state.completeConnection);
+  const sendSystemMsg = useWebRTCStore(state => state.sendSystemMessage);
 
   const [messageText, setMessageText] = useState('');
   const [showNewRoomDialog, setShowNewRoomDialog] = useState(false);

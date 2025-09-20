@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useEnhancedWebRTC } from '../contexts/EnhancedWebRTCProvider';
+import { useWebRTCStore } from '../stores/webrtcStore';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
@@ -9,16 +9,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Copy, Check, Share, Users, QrCode } from 'lucide-react';
 
 export const EnhancedConnectionModal: React.FC = () => {
-  const {
-    isConnectionModalOpen,
-    setConnectionModalOpen,
-    activeRoomId,
-    generateInviteCode,
-    joinWithInviteCode,
-    completeConnection,
-    inviteCode,
-    setInviteCode
-  } = useEnhancedWebRTC();
+  const isConnectionModalOpen = useWebRTCStore(state => state.isConnectionModalOpen);
+  const setConnectionModalOpen = useWebRTCStore(state => state.setConnectionModalOpen);
+  const activeRoomId = useWebRTCStore(state => state.activeRoomId);
+  const inviteCode = useWebRTCStore(state => state.inviteCode);
+  const setInviteCode = useWebRTCStore(state => state.setInviteCode);
+
+  const generateInviteCode = useWebRTCStore(state => state.generateInviteCode);
+  const joinWithInviteCode = useWebRTCStore(state => state.joinWithInviteCode);
+  const completeConnection = useWebRTCStore(state => state.completeConnection);
 
   const [inputInviteCode, setInputInviteCode] = useState('');
   const [answerCode, setAnswerCode] = useState('');

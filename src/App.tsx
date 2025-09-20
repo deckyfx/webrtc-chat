@@ -1,11 +1,12 @@
 import React from 'react';
-import { EnhancedWebRTCProvider, useEnhancedWebRTC } from './contexts/EnhancedWebRTCProvider';
+import { useWebRTCStore } from './stores/webrtcStore';
+import { WebRTCInitializer } from './providers/WebRTCInitializer';
 import { EnhancedChatInterface } from './components/EnhancedChatInterface';
 import { EnhancedJoinScreen } from './components/EnhancedJoinScreen';
 import { EnhancedConnectionModal } from './components/EnhancedConnectionModal';
 
 const AppContent: React.FC = () => {
-  const { user } = useEnhancedWebRTC();
+  const user = useWebRTCStore(state => state.user);
 
   if (!user) {
     return <EnhancedJoinScreen />;
@@ -21,11 +22,11 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <EnhancedWebRTCProvider>
+    <WebRTCInitializer>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <AppContent />
       </div>
-    </EnhancedWebRTCProvider>
+    </WebRTCInitializer>
   );
 };
 

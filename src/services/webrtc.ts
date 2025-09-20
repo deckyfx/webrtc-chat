@@ -20,6 +20,7 @@ export interface Peer {
   connection: RTCPeerConnection;
   dataChannel?: RTCDataChannel;
   name?: string;
+  candidates: RTCIceCandidate[];
 }
 
 const ICE_SERVERS: RTCIceServer[] = [
@@ -48,24 +49,18 @@ export class WebRTCManager {
 
   private async createPeerConnection(peerId: string): Promise<Peer> {
     const connection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    const peer: Peer = { id: peerId, connection };
+    const candidates: RTCIceCandidate[] = [];
+    const peer: Peer = { id: peerId, connection, candidates };
     this.peer = peer;
 
-    const candidates: RTCIceCandidate[] = [];
-    let candidatePromise = new Promise<void>(resolve => {
-        connection.onicecandidate = (event) => {
-            if (event.candidate) {
-                candidates.push(event.candidate);
-            } else {
-                resolve();
-            }
-        };
-    });
-
-    // @ts-ignore
-    connection.gatheredCandidates = candidatePromise;
-    // @ts-ignore
-    connection.getCandidates = () => candidates;
+    connection.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log('ICE candidate gathered:', event.candidate.candidate);
+        candidates.push(event.candidate);
+      } else {
+        console.log('ICE gathering complete');
+      }
+    };
 
     connection.onconnectionstatechange = () => {
       console.log('Connection state changed to:', connection.connectionState);
@@ -140,13 +135,12 @@ export class WebRTCManager {
     const offer = await peer.connection.createOffer();
     await peer.connection.setLocalDescription(offer);
 
-    // @ts-ignore
-    await peer.connection.gatheredCandidates;
+    // Wait for ICE gathering to complete
+    await this.waitForIceGathering(peer.connection);
 
     const payload: SignalingPayload = {
         sdp: peer.connection.localDescription!,
-        // @ts-ignore
-        candidates: peer.connection.getCandidates().map(c => c.toJSON()),
+        candidates: peer.candidates,
     };
 
     return btoa(JSON.stringify(payload));
@@ -169,13 +163,12 @@ export class WebRTCManager {
     const answer = await peer.connection.createAnswer();
     await peer.connection.setLocalDescription(answer);
 
-    // @ts-ignore
-    await peer.connection.gatheredCandidates;
+    // Wait for ICE gathering to complete
+    await this.waitForIceGathering(peer.connection);
 
     const answerPayload: SignalingPayload = {
         sdp: peer.connection.localDescription!,
-        // @ts-ignore
-        candidates: peer.connection.getCandidates().map(c => c.toJSON()),
+        candidates: peer.candidates,
     };
 
     return btoa(JSON.stringify(answerPayload));
@@ -267,6 +260,31 @@ export class WebRTCManager {
       });
     }
     return null;
+  }
+
+  private waitForIceGathering(connection: RTCPeerConnection): Promise<void> {
+    return new Promise((resolve) => {
+      if (connection.iceGatheringState === 'complete') {
+        resolve();
+        return;
+      }
+
+      const checkState = () => {
+        if (connection.iceGatheringState === 'complete') {
+          connection.removeEventListener('icegatheringstatechange', checkState);
+          resolve();
+        }
+      };
+
+      connection.addEventListener('icegatheringstatechange', checkState);
+
+      // Timeout after 5 seconds even if not complete
+      setTimeout(() => {
+        connection.removeEventListener('icegatheringstatechange', checkState);
+        console.log('ICE gathering timeout, proceeding with available candidates');
+        resolve();
+      }, 5000);
+    });
   }
 
   public disconnect() {
