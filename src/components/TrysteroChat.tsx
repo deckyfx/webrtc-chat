@@ -323,7 +323,7 @@ export const TrysteroChat: React.FC = () => {
                 return (
                   <div
                     key={message.id}
-                    className={`flex gap-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
+                    className={`flex gap-3 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
                   >
                     {/* Avatar for other users (left side) */}
                     {!isOwnMessage && !isSystem && (
@@ -345,17 +345,30 @@ export const TrysteroChat: React.FC = () => {
 
                     <div
                       className={`
-                        max-w-[70%] rounded-lg px-4 py-2
+                        max-w-[70%] px-4 py-2 relative
                         ${isSystem
-                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-center w-full max-w-none'
+                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-center w-full max-w-none rounded-lg'
                           : isOwnMessage
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
+                          ? 'bg-blue-500 text-white rounded-l-lg rounded-tr-lg rounded-br-md'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-r-lg rounded-tl-lg rounded-bl-md'
                         }
                       `}
                     >
+                      {/* Speech bubble tail for other users (points left) */}
+                      {!isOwnMessage && !isSystem && (
+                        <div
+                          className="absolute top-3 -left-[6px] w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-r-[6px] border-r-gray-200 dark:border-r-gray-700"
+                        />
+                      )}
+
+                      {/* Speech bubble tail for own messages (points right) */}
+                      {isOwnMessage && (
+                        <div
+                          className="absolute top-3 -right-[6px] w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-l-[6px] border-l-blue-500"
+                        />
+                      )}
                     {!isSystem && !isOwnMessage && (
-                      <p className="text-xs font-semibold mb-1 opacity-75">
+                      <p className="text-xs font-bold mb-1">
                         {sender?.name || message.senderName}
                       </p>
                     )}
