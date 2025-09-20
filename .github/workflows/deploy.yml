@@ -35,26 +35,26 @@ jobs:
           # Create .nojekyll file
           touch dist/.nojekyll
 
-          # Create a temporary directory
-          mkdir gh-pages-deploy
-          cp -r dist/* gh-pages-deploy/
-          cp dist/.nojekyll gh-pages-deploy/
+          # Save the dist directory path
+          DIST_DIR=$(pwd)/dist
 
           # Checkout gh-pages branch (create if doesn't exist)
           git fetch origin
           if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
             git checkout gh-pages
             # Clean old files
-            rm -rf *
+            git rm -rf . || true
+            rm -rf * || true
           else
             git checkout --orphan gh-pages
             # Remove all files from tracking
-            git rm -rf . --cached
-            rm -rf *
+            git rm -rf . --cached || true
+            rm -rf * || true
           fi
 
-          # Copy built files
-          cp -r ../gh-pages-deploy/* .
+          # Copy built files from the saved path
+          cp -r $DIST_DIR/* .
+          cp $DIST_DIR/.nojekyll .
 
           # Add and commit
           git add -A
