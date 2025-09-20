@@ -126,3 +126,4 @@ bun run build:gh-pages
 ## License
 
 MIT
+# Trigger GitHub Pages deployment
