@@ -17,7 +17,6 @@ import {
   Copy,
   Check,
   Hash,
-  Settings,
   Image
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
@@ -35,7 +34,6 @@ export const EnhancedChatInterface: React.FC = () => {
     leaveRoom,
     setActiveRoom,
     sendMessage,
-    setConnectionModalOpen,
     isConnected,
     markRoomAsRead,
     generateInviteCode,
@@ -51,6 +49,10 @@ export const EnhancedChatInterface: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showInviteInput, setShowInviteInput] = useState(false);
+  const [showAnswerInput, setShowAnswerInput] = useState(false);
+  const [inviteInputValue, setInviteInputValue] = useState('');
+  const [answerInputValue, setAnswerInputValue] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -65,6 +67,41 @@ export const EnhancedChatInterface: React.FC = () => {
       markRoomAsRead(activeRoomId);
     }
   }, [activeRoomId, markRoomAsRead]);
+
+  // Handle clicks on system action buttons
+  useEffect(() => {
+    const handleSystemButtonClick = async (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('system-action-btn')) {
+        const action = target.getAttribute('data-action');
+        const code = target.getAttribute('data-code');
+
+        switch (action) {
+          case 'generate-invite':
+            await handleInviteCommand();
+            break;
+          case 'copy-code':
+            if (code) {
+              await navigator.clipboard?.writeText(code);
+              target.textContent = '✅ Copied!';
+              setTimeout(() => {
+                target.textContent = '📋 Copy Code';
+              }, 2000);
+            }
+            break;
+          case 'input-answer':
+            setShowAnswerInput(true);
+            break;
+          case 'input-invite':
+            setShowInviteInput(true);
+            break;
+        }
+      }
+    };
+
+    document.addEventListener('click', handleSystemButtonClick);
+    return () => document.removeEventListener('click', handleSystemButtonClick);
+  }, [activeRoomId]);
 
   const handleSendMessage = async () => {
     if (!messageText.trim() || !activeRoomId) return;
@@ -84,6 +121,8 @@ export const EnhancedChatInterface: React.FC = () => {
   const handleCommand = async (command: string) => {
     const [cmd, ...args] = command.split(' ');
     const arg = args.join(' ').trim();
+
+    if (!cmd) return;
 
     switch (cmd.toLowerCase()) {
       case '/invite':
@@ -131,8 +170,10 @@ export const EnhancedChatInterface: React.FC = () => {
       const inviteCode = await generateInviteCode(activeRoomId!);
       await sendSystemMessage(
         `<b>📋 Invitation Code Generated!</b><br><br>` +
-        `<code style="background: #f0f0f0; padding: 8px; border-radius: 4px; display: block; word-break: break-all; font-size: 11px;">${inviteCode}</code><br>` +
-        `<br>Share this code with your peer. They should use: <b>/join ${inviteCode.substring(0, 20)}...</b>`
+        `<code id="invite-${Date.now()}" style="background: #f0f0f0; padding: 8px; border-radius: 4px; display: block; word-break: break-all; font-size: 11px;">${inviteCode}</code><br>` +
+        `<br><button class="system-action-btn" data-action="copy-code" data-code="${inviteCode}">📋 Copy Code</button> ` +
+        `<button class="system-action-btn" data-action="input-answer">✏️ Input Answer</button><br><br>` +
+        `Share this code with your peer for them to join.`
       );
     } catch (error) {
       await sendSystemMessage('❌ Failed to generate invitation code. Please try again.');
@@ -144,8 +185,9 @@ export const EnhancedChatInterface: React.FC = () => {
       const answerCode = await joinWithInviteCode(inviteCode);
       await sendSystemMessage(
         `<b>📤 Answer Code Generated!</b><br><br>` +
-        `<code style="background: #f0f0f0; padding: 8px; border-radius: 4px; display: block; word-break: break-all; font-size: 11px;">${answerCode}</code><br>` +
-        `<br>Share this code back with your peer. They should use: <b>/accept ${answerCode.substring(0, 20)}...</b>`
+        `<code id="answer-${Date.now()}" style="background: #f0f0f0; padding: 8px; border-radius: 4px; display: block; word-break: break-all; font-size: 11px;">${answerCode}</code><br>` +
+        `<br><button class="system-action-btn" data-action="copy-code" data-code="${answerCode}">📋 Copy Code</button><br><br>` +
+        `Share this code back with your peer to complete the connection.`
       );
     } catch (error) {
       await sendSystemMessage('❌ Failed to process invitation code. Please check the code and try again.');
@@ -155,7 +197,7 @@ export const EnhancedChatInterface: React.FC = () => {
   const handleAcceptCommand = async (answerCode: string) => {
     try {
       await completeConnection(answerCode);
-      await sendSystemMessage('🔄 Processing answer code and establishing connection...');
+      // Message already sent by completeConnection
     } catch (error) {
       await sendSystemMessage('❌ Failed to complete connection. Please check the answer code and try again.');
     }
@@ -171,7 +213,7 @@ export const EnhancedChatInterface: React.FC = () => {
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const img = new Image();
+        const img = document.createElement('img');
         img.onload = () => {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d')!;
@@ -300,12 +342,18 @@ export const EnhancedChatInterface: React.FC = () => {
         // Fallback for browsers without clipboard API
         const textArea = document.createElement('textarea');
         textArea.value = activeRoomId;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
         document.body.appendChild(textArea);
         textArea.select();
-        document.execCommand('copy');
+        try {
+          document.execCommand('copy');
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch {
+          console.error('Failed to copy');
+        }
         document.body.removeChild(textArea);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
       }
     }
   };
@@ -643,7 +691,12 @@ export const EnhancedChatInterface: React.FC = () => {
                 <Input
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
                   placeholder="Type a message or /help for commands..."
                   className="flex-1"
                 />
@@ -734,6 +787,120 @@ export const EnhancedChatInterface: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Input Invitation Code Dialog */}
+      <Dialog open={showInviteInput} onOpenChange={setShowInviteInput}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Input Invitation Code</DialogTitle>
+            <DialogDescription>
+              Paste the invitation code from your peer to join the connection
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="invite-code">Invitation Code</Label>
+              <textarea
+                id="invite-code"
+                value={inviteInputValue}
+                onChange={(e) => setInviteInputValue(e.target.value)}
+                placeholder="Paste invitation code here..."
+                className="w-full h-32 p-2 border rounded-md font-mono text-xs"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setShowInviteInput(false)}
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (inviteInputValue.trim()) {
+                    await handleJoinCommand(inviteInputValue.trim());
+                    setInviteInputValue('');
+                    setShowInviteInput(false);
+                  }
+                }}
+                disabled={!inviteInputValue.trim()}
+              >
+                Join Connection
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Input Answer Code Dialog */}
+      <Dialog open={showAnswerInput} onOpenChange={setShowAnswerInput}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Input Answer Code</DialogTitle>
+            <DialogDescription>
+              Paste the answer code from your peer to complete the connection
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="answer-code">Answer Code</Label>
+              <textarea
+                id="answer-code"
+                value={answerInputValue}
+                onChange={(e) => setAnswerInputValue(e.target.value)}
+                placeholder="Paste answer code here..."
+                className="w-full h-32 p-2 border rounded-md font-mono text-xs"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setShowAnswerInput(false)}
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (answerInputValue.trim()) {
+                    await handleAcceptCommand(answerInputValue.trim());
+                    setAnswerInputValue('');
+                    setShowAnswerInput(false);
+                  }
+                }}
+                disabled={!answerInputValue.trim()}
+              >
+                Complete Connection
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Custom styles for system action buttons */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          .system-action-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-block;
+            margin-right: 8px;
+          }
+          .system-action-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+          }
+          .system-action-btn:active {
+            transform: translateY(0);
+          }
+        `
+      }} />
     </div>
   );
 };

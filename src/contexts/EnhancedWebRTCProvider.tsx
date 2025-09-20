@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { WebRTCManager, Message } from '../services/webrtc';
+import { WebRTCManager, type Message } from '../services/webrtc';
 
 // Enhanced UUID generator with better entropy
 function generateUUID(): string {
@@ -232,13 +232,13 @@ export const EnhancedWebRTCProvider: React.FC<EnhancedWebRTCProviderProps> = ({ 
   }, []);
 
   const createRoom = useCallback((): string => {
-    const roomId = generateUUID().split('-')[0].toUpperCase();
+    const roomId = (generateUUID().split('-')[0] || generateUUID()).toUpperCase();
     const newRoom: Room = {
       id: roomId,
       name: `Room ${roomId}`,
       messages: [{
         id: generateUUID(),
-        text: `Welcome to Room ${roomId}! Share the room ID with others to invite them.`,
+        text: `Welcome to Room ${roomId}! Share the room ID with others to invite them.<br><br><button class="system-action-btn" data-action="generate-invite">📤 Generate Invitation Code</button>`,
         senderId: 'system',
         senderName: 'System',
         timestamp: Date.now(),
@@ -267,7 +267,7 @@ export const EnhancedWebRTCProvider: React.FC<EnhancedWebRTCProviderProps> = ({ 
       name: `Room ${normalizedRoomId}`,
       messages: [{
         id: generateUUID(),
-        text: `Joined Room ${normalizedRoomId}! Generate an invite code to connect with peers.`,
+        text: `Joined Room ${normalizedRoomId}!<br><br><button class="system-action-btn" data-action="input-invite">📥 Input Invitation Code</button>`,
         senderId: 'system',
         senderName: 'System',
         timestamp: Date.now(),
@@ -291,7 +291,7 @@ export const EnhancedWebRTCProvider: React.FC<EnhancedWebRTCProviderProps> = ({ 
 
     // Set new active room
     const remainingRooms = rooms.filter(room => room.id !== roomId);
-    if (remainingRooms.length > 0) {
+    if (remainingRooms.length > 0 && remainingRooms[0]) {
       setActiveRoomId(remainingRooms[0].id);
     } else {
       setActiveRoomId(null);
@@ -311,23 +311,7 @@ export const EnhancedWebRTCProvider: React.FC<EnhancedWebRTCProviderProps> = ({ 
       const code = await webrtcManager.createOffer(roomId);
       setInviteCode(code);
 
-      // Add system message
-      setRooms(prev => prev.map(room => {
-        if (room.id === roomId) {
-          return {
-            ...room,
-            messages: [...room.messages, {
-              id: generateUUID(),
-              text: 'Invite code generated! Share it with your peer to establish connection.',
-              senderId: 'system',
-              senderName: 'System',
-              timestamp: Date.now(),
-            }],
-            lastActivity: Date.now(),
-          };
-        }
-        return room;
-      }));
+      // Don't add duplicate system message - handled in UI
 
       return code;
     } catch (error) {
@@ -343,23 +327,7 @@ export const EnhancedWebRTCProvider: React.FC<EnhancedWebRTCProviderProps> = ({ 
     try {
       const answerCode = await webrtcManager.handleInvite(inviteCode, activeRoomId);
 
-      // Add system message
-      setRooms(prev => prev.map(room => {
-        if (room.id === activeRoomId) {
-          return {
-            ...room,
-            messages: [...room.messages, {
-              id: generateUUID(),
-              text: 'Received invite! Answer code generated. Share it back to complete the connection.',
-              senderId: 'system',
-              senderName: 'System',
-              timestamp: Date.now(),
-            }],
-            lastActivity: Date.now(),
-          };
-        }
-        return room;
-      }));
+      // Don't add duplicate system message - handled in UI
 
       return answerCode;
     } catch (error) {
@@ -374,25 +342,8 @@ export const EnhancedWebRTCProvider: React.FC<EnhancedWebRTCProviderProps> = ({ 
     try {
       await webrtcManager.handleAnswer(answerCode);
 
-      // Add system message - connection state will be updated when data channel opens
-      if (activeRoomId) {
-        setRooms(prev => prev.map(room => {
-          if (room.id === activeRoomId) {
-            return {
-              ...room,
-              messages: [...room.messages, {
-                id: generateUUID(),
-                text: '🔄 Processing answer code, establishing connection...',
-                senderId: 'system',
-                senderName: 'System',
-                timestamp: Date.now(),
-              }],
-              lastActivity: Date.now(),
-            };
-          }
-          return room;
-        }));
-      }
+      // Connection state will be updated when data channel opens
+      // System message already shown in UI
     } catch (error) {
       setConnectionState(ConnectionState.ERROR);
       throw error;
